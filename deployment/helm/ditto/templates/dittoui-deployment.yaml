@@ -51,6 +51,41 @@ spec:
           labelSelector:
             matchLabels:
               app.kubernetes.io/name: {{ include "ditto.name" . }}-dittoui
+      {{- if eq .Values.nginx.service.type "LoadBalancer" }}
+      serviceAccountName: external-ip-reader
+      initContainers:
+        - name: change-volume-owner
+          image: {{ printf "%s:%s" .Values.dittoui.image.repository ( default .Chart.AppVersion ( default .Values.dittoTag .Values.dittoui.image.tag ) ) }}
+          imagePullPolicy: {{ .Values.dittoui.image.pullPolicy }}
+          securityContext:
+            runAsUser: 0
+          env:
+          - name: SERVICE_NAME
+            value: {{ include "ditto.fullname" . }}-nginx
+          command: [ "sh", "-c" ]
+          args:
+          - |
+            # Copy the dist folder to /tmp/environments to be able to change the values
+            cp -a /usr/share/nginx/html/dist/. /tmp/environments
+            # ls -la /tmp/environments
+            # Install kubectl (service account has permission to get services)
+            curl -LO --insecure https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl \
+            && mv kubectl /usr/local/bin \
+            && chmod +x /usr/local/bin/kubectl
+            # Get the external IP of the nginx service
+            EXTERNAL_IP=$(kubectl get svc $SERVICE_NAME -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+            # echo "EXTERNAL_IP=$EXTERNAL_IP"
+            # Create a new environment with the external IP
+            ## Define the replacement string with proper escaping
+            replacement='</div>`;var Ru={server_ditto:{api_uri:"http://'"$EXTERNAL_IP"':8080",ditto_version:3,bearer:null,bearerDevOps:null,defaultUsernamePassword:"ditto:ditto",defaultDittoPreAuthenticatedUsername:null,defaultUsernamePasswordDevOps:"devops:foobar",mainAuth:"basic",devopsAuth:"basic"},local_ditto'
+            # echo "replacement=$replacement"
+            # Execute the sed command with the defined replacement string
+            sed -i "s|</div>\`;\var Ru={local_ditto|$replacement|" /tmp/environments/main.js
+            # cat /tmp/environments/main.js
+          volumeMounts:
+            - name: add-environment
+              mountPath: /tmp/environments
+      {{- end }}
       containers:
         - name: {{ .Chart.Name }}-dittoui
           image: {{ printf "%s:%s" .Values.dittoui.image.repository ( default .Chart.AppVersion ( default .Values.dittoTag .Values.dittoui.image.tag ) ) }}
@@ -78,8 +113,16 @@ spec:
             - name: dittoui-nginx-conf
               mountPath: /etc/nginx/nginx.conf
               subPath: nginx.conf
+            {{- if eq .Values.nginx.service.type "LoadBalancer" }}
+            - name: add-environment
+              mountPath: /usr/share/nginx/html/dist
+            {{- end }}
       volumes:
         - name: dittoui-nginx-conf
           configMap:
             name: {{ .Release.Name }}-dittoui-config-nginx-conf
+        {{- if eq .Values.nginx.service.type "LoadBalancer" }}
+        - name: add-environment
+          emptyDir: {}
+        {{- end }}
 {{- end }}
