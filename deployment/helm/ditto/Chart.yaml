@@ -31,6 +31,6 @@ maintainers:
     email: thomas.jaeckle@beyonnex.io
 dependencies:
   - name: mongodb
-    repository: https://charts.bitnami.com/bitnami
+    repository: oci://registry-1.docker.io/bitnamicharts
     version: ^16.x
     condition: mongodb.enabled
