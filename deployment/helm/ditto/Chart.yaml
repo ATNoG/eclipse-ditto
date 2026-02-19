@@ -32,5 +32,5 @@ maintainers:
 dependencies:
   - name: mongodb
     repository: https://charts.bitnami.com/bitnami
-    version: ^13.x
+    version: ^16.x
     condition: mongodb.enabled
